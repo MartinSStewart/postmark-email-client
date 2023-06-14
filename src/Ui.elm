@@ -19,6 +19,7 @@ simpleButton onPress text =
         , Element.Border.rounded 8
         , Element.Background.color (Element.rgb 0.9 0.9 0.9)
         , Element.paddingXY 16 8
+        , Element.Font.bold
         ]
         onPress
         (Element.el [ Element.centerX ] (Element.text text))
@@ -32,7 +33,7 @@ simpleTextInput label placeholder errorText2 text onChange =
             [ Element.Font.size 16 ]
             { text = text
             , onChange = onChange
-            , label = Element.Input.labelAbove [] (Element.paragraph [] [ Element.text label ])
+            , label = Element.Input.labelAbove [] (Element.paragraph [ Element.Font.bold ] [ Element.text label ])
             , placeholder = Maybe.map (\placeholder2 -> Element.Input.placeholder [] (Element.text placeholder2)) placeholder
             }
         , errorText errorText2

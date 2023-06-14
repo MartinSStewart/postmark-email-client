@@ -28,7 +28,7 @@ type alias FrontendModel =
 
 
 type SubmitStatus
-    = NotSubmitted HasPressedSubmit (Result String ())
+    = NotSubmitted HasPressedSubmit (Maybe (Result String ()))
     | Submitting
 
 

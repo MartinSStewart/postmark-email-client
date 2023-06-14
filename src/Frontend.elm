@@ -3,6 +3,7 @@ module Frontend exposing (..)
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
 import Element
+import Element.Background
 import Element.Font
 import Element.Input
 import Email.Html
@@ -67,7 +68,7 @@ init url key =
       , emailTo = ""
       , senderName = ""
       , senderEmail = ""
-      , submitStatus = NotSubmitted HasNotPressedSubmit (Ok ())
+      , submitStatus = NotSubmitted HasNotPressedSubmit Nothing
       , debounceCounter = 0
       }
     , Ports.get_local_storage_to_js ()
@@ -105,7 +106,7 @@ update msg model =
                             )
 
                         Err error ->
-                            ( { model | submitStatus = NotSubmitted HasPressedSubmit (Err error) }, Cmd.none )
+                            ( { model | submitStatus = NotSubmitted HasPressedSubmit (Just (Err error)) }, Cmd.none )
 
                 Submitting ->
                     ( model, Cmd.none )
@@ -142,7 +143,7 @@ update msg model =
                         , emailTo = ok.emailTo
                         , senderName = ok.senderName
                         , senderEmail = ok.senderEmail
-                        , submitStatus = NotSubmitted HasNotPressedSubmit (Ok ())
+                        , submitStatus = NotSubmitted HasNotPressedSubmit Nothing
                     }
 
                 Err _ ->
@@ -188,7 +189,7 @@ updateFromBackend msg model =
                             model.submitStatus
 
                         Submitting ->
-                            NotSubmitted HasNotPressedSubmit (Result.mapError postmarkErrorToString result)
+                            NotSubmitted HasNotPressedSubmit (Just (Result.mapError postmarkErrorToString result))
               }
             , Cmd.none
             )
@@ -231,7 +232,10 @@ view model =
                 |> Element.inFront
             ]
             (Element.column
-                [ Element.width (Element.maximum 800 Element.fill), Element.centerX, Element.spacing 24 ]
+                [ Element.width (Element.maximum 800 Element.fill)
+                , Element.centerX
+                , Element.spacing 24
+                ]
                 [ Element.paragraph
                     [ Element.Font.size 18 ]
                     [ Element.text
@@ -290,7 +294,7 @@ view model =
                     TypedEmailSubject
                 , Element.Input.multiline
                     [ Element.Font.size 16, Element.height (Element.minimum 80 Element.shrink) ]
-                    { label = Element.Input.labelAbove [] (Element.text "Plain text body (the email can contain a plain text body, an html body, or both)")
+                    { label = Element.Input.labelAbove [ Element.Font.bold ] (Element.text "Plain text body (the email can contain a plain text body, an html body, or both)")
                     , placeholder = Nothing
                     , text = model.bodyText
                     , onChange = TypedBodyText
@@ -298,7 +302,7 @@ view model =
                     }
                 , Element.Input.multiline
                     [ Element.Font.size 16, Element.height (Element.minimum 80 Element.shrink) ]
-                    { label = Element.Input.labelAbove [] (Element.text "Html body")
+                    { label = Element.Input.labelAbove [ Element.Font.bold ] (Element.text "Html body")
                     , placeholder = Nothing
                     , text = model.bodyHtml
                     , onChange = TypedBodyHtml
@@ -314,14 +318,19 @@ view model =
                             Submitting ->
                                 "Sending..."
                         )
-                    , Ui.errorText
-                        (case model.submitStatus of
-                            NotSubmitted _ result ->
-                                result
+                    , case model.submitStatus of
+                        NotSubmitted _ (Just result) ->
+                            case result of
+                                Ok () ->
+                                    Element.paragraph
+                                        [ Element.Font.color (Element.rgb 0 0.6 0) ]
+                                        [ Element.text "Email sent successfully!" ]
 
-                            Submitting ->
-                                Ok ()
-                        )
+                                Err _ ->
+                                    Ui.errorText result
+
+                        _ ->
+                            Element.none
                     ]
                 ]
             )
