@@ -1,8 +1,9 @@
 module Postmark exposing
     ( ApiKey
     , Error(..)
-    , PostmarkEmailBody
+    , PostmarkEmailBody(..)
     , PostmarkSend
+    , apiKey
     , sendEmail
     , sendEmailTask
     , sendTemplateEmail

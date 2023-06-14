@@ -1,4 +1,4 @@
-module Ui exposing (button, simpleButton, simpleTextInput)
+module Ui exposing (button, errorText, simpleButton, simpleTextInput)
 
 import Element exposing (Element)
 import Element.Background
@@ -25,20 +25,25 @@ simpleButton onPress text =
 
 
 simpleTextInput : String -> Maybe String -> Result String ok -> String -> (String -> msg) -> Element msg
-simpleTextInput label placeholder errorText text onChange =
+simpleTextInput label placeholder errorText2 text onChange =
     Element.column
-        [ Element.spacing 4, Element.width Element.fill ]
+        [ Element.spacing 4, Element.width Element.fill, Element.alignTop ]
         [ Element.Input.text
-            []
+            [ Element.Font.size 16 ]
             { text = text
             , onChange = onChange
             , label = Element.Input.labelAbove [] (Element.paragraph [] [ Element.text label ])
             , placeholder = Maybe.map (\placeholder2 -> Element.Input.placeholder [] (Element.text placeholder2)) placeholder
             }
-        , case errorText of
-            Err error ->
-                Element.paragraph [ Element.Font.color (Element.rgb 1 0 0) ] [ Element.text error ]
-
-            Ok _ ->
-                Element.none
+        , errorText errorText2
         ]
+
+
+errorText : Result String a -> Element msg
+errorText text =
+    case text of
+        Err error ->
+            Element.paragraph [ Element.Font.color (Element.rgb 1 0 0), Element.Font.size 16 ] [ Element.text error ]
+
+        Ok _ ->
+            Element.none
