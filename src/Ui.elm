@@ -1,12 +1,10 @@
-module Ui exposing (button, simpleButton, simpleButtonExternalLink, simpleButtonLink, simpleTextInput)
+module Ui exposing (button, simpleButton, simpleTextInput)
 
 import Element exposing (Element)
 import Element.Background
 import Element.Border
 import Element.Font
 import Element.Input
-import Route exposing (Route)
-import Url exposing (Url)
 
 
 button : List (Element.Attribute msg) -> msg -> Element msg -> Element msg
@@ -24,32 +22,6 @@ simpleButton onPress text =
         ]
         onPress
         (Element.el [ Element.centerX ] (Element.text text))
-
-
-simpleButtonLink : Route -> String -> Element msg
-simpleButtonLink route text =
-    Element.link
-        [ Element.width Element.fill
-        , Element.Border.rounded 8
-        , Element.Background.color (Element.rgb 0.9 0.9 0.9)
-        , Element.paddingXY 16 8
-        ]
-        { url = Route.encode route
-        , label = Element.el [ Element.centerX ] (Element.text text)
-        }
-
-
-simpleButtonExternalLink : String -> String -> Element msg
-simpleButtonExternalLink url text =
-    Element.link
-        [ Element.width Element.fill
-        , Element.Border.rounded 8
-        , Element.Background.color (Element.rgb 0.9 0.9 0.9)
-        , Element.paddingXY 16 8
-        ]
-        { url = url
-        , label = Element.el [ Element.centerX ] (Element.text text)
-        }
 
 
 simpleTextInput : String -> Maybe String -> Result String ok -> String -> (String -> msg) -> Element msg
