@@ -17,7 +17,7 @@ import Http
 import Internal
 import Json.Decode as D
 import Json.Encode as E
-import List.Nonempty exposing (Nonempty)
+import List.Nonempty exposing (Nonempty(..))
 import String.Nonempty exposing (NonemptyString)
 import Task exposing (Task)
 
@@ -268,20 +268,24 @@ bodyToJsonValues body =
 
 jsonResolver : Http.Resolver SendEmailError ()
 jsonResolver =
+    let
+        decodeBody metadata body =
+            case D.decodeString decodePostmarkSendResponse body of
+                Ok json ->
+                    if json.errorCode == 0 then
+                        Ok ()
+
+                    else
+                        PostmarkError json |> Err
+
+                Err _ ->
+                    UnknownError { statusCode = metadata.statusCode, body = body } |> Err
+    in
     Http.stringResolver
         (\response ->
             case response of
                 Http.GoodStatus_ metadata body ->
-                    case D.decodeString decodePostmarkSendResponse body of
-                        Ok json ->
-                            if json.errorCode == 0 then
-                                Ok ()
-
-                            else
-                                PostmarkError json |> Err
-
-                        Err _ ->
-                            UnknownError { statusCode = metadata.statusCode, body = body } |> Err
+                    decodeBody metadata body
 
                 Http.BadUrl_ message ->
                     Err (BadUrl message)
@@ -293,7 +297,7 @@ jsonResolver =
                     Err NetworkError
 
                 Http.BadStatus_ metadata body ->
-                    Err (UnknownError { statusCode = metadata.statusCode, body = body })
+                    decodeBody metadata body
         )
 
 
@@ -316,7 +320,10 @@ jsonResolver2 =
     let
         decoder : D.Decoder (Nonempty PostmarkSendResponse)
         decoder =
-            decodeNonempty decodePostmarkSendResponse
+            D.oneOf
+                [ decodeNonempty decodePostmarkSendResponse
+                , decodePostmarkSendResponse |> D.map (\a -> Nonempty a [])
+                ]
 
         decodeBody metadata body =
             case D.decodeString decoder body of
