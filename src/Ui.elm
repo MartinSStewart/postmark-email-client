@@ -44,7 +44,9 @@ errorText : Result String a -> Element msg
 errorText text =
     case text of
         Err error ->
-            Element.paragraph [ Element.Font.color (Element.rgb 1 0 0), Element.Font.size 16 ] [ Element.text error ]
+            String.split "\n" error
+                |> List.map (\subtext -> Element.paragraph [] [ Element.text subtext ])
+                |> Element.column [ Element.spacing 6, Element.Font.color (Element.rgb 1 0 0), Element.Font.size 16 ]
 
         Ok _ ->
             Element.none

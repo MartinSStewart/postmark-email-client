@@ -83,8 +83,8 @@ type ToBackend
 
 
 type BackendMsg
-    = SentEmail ClientId (Result Postmark.Error ())
+    = SentEmail ClientId (Result Postmark.SendEmailsError ())
 
 
 type ToFrontend
-    = SendEmailResponse (Result Postmark.Error ())
+    = SendEmailResponse (Result Postmark.SendEmailsError ())

@@ -2,8 +2,9 @@ module Backend exposing (..)
 
 import Html
 import Lamdera exposing (ClientId, SessionId)
-import List.Nonempty
+import List.Nonempty exposing (Nonempty(..))
 import Postmark
+import Task
 import Types exposing (..)
 
 
@@ -33,13 +34,18 @@ updateFromFrontend _ clientId msg model =
     case msg of
         SendEmailRequest emailRequest ->
             ( model
-            , Postmark.sendEmail
+            , Postmark.sendEmails
                 (SentEmail clientId)
                 emailRequest.apiKey
-                { from = { name = emailRequest.senderName, email = emailRequest.senderEmail }
-                , to = List.Nonempty.map (\email -> { name = "", email = email }) emailRequest.emailTo
-                , subject = emailRequest.subject
-                , body = emailRequest.body
-                , messageStream = "broadcast"
-                }
+                (List.Nonempty.map
+                    (\emailTo ->
+                        { from = { name = emailRequest.senderName, email = emailRequest.senderEmail }
+                        , to = Nonempty { name = "", email = emailTo } []
+                        , subject = emailRequest.subject
+                        , body = emailRequest.body
+                        , messageStream = "broadcast"
+                        }
+                    )
+                    emailRequest.emailTo
+                )
             )

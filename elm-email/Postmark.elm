@@ -1,12 +1,14 @@
 module Postmark exposing
     ( ApiKey
-    , Error(..)
     , PostmarkEmailBody(..)
     , PostmarkSend
+    , SendEmailError(..)
+    , SendEmailsError(..)
     , apiKey
     , sendEmail
     , sendEmailTask
-    , sendTemplateEmail
+    , sendEmails
+    , sendEmailsTask
     )
 
 import Email.Html
@@ -60,40 +62,67 @@ type alias PostmarkSend =
 {-| Possible error codes we might get back when trying to send an email.
 Some are just normal HTTP errors and others are specific to the Postmark API.
 -}
-type Error
+type SendEmailError
     = UnknownError { statusCode : Int, body : String }
-    | PostmarkError { errorCode : Int, message : String }
+    | PostmarkError PostmarkSendResponse
     | NetworkError
     | Timeout
     | BadUrl String
 
 
-sendEmailTask : ApiKey -> PostmarkSend -> Task Error ()
+type SendEmailsError
+    = UnknownError_ { statusCode : Int, body : String }
+    | PostmarkErrors (Nonempty PostmarkSendResponse)
+    | NetworkError_
+    | Timeout_
+    | BadUrl_ String
+
+
+sendEmailTask : ApiKey -> PostmarkSend -> Task SendEmailError ()
 sendEmailTask (ApiKey token) d =
-    let
-        httpBody =
-            Http.jsonBody <|
-                E.object <|
-                    [ ( "From", E.string <| emailToString d.from )
-                    , ( "To", E.string <| emailsToString d.to )
-                    , ( "Subject", E.string <| String.Nonempty.toString d.subject )
-                    , ( "MessageStream", E.string d.messageStream )
-                    ]
-                        ++ bodyToJsonValues d.body
-    in
     Http.task
         { method = "POST"
         , headers = [ Http.header "X-Postmark-Server-Token" token ]
         , url = endpoint ++ "/email"
-        , body = httpBody
-        , resolver = jsonResolver decodePostmarkSendResponse
+        , body = Http.jsonBody (encodeEmail d)
+        , resolver = jsonResolver
         , timeout = Nothing
         }
 
 
-sendEmail : (Result Error () -> msg) -> ApiKey -> PostmarkSend -> Cmd msg
+encodeEmail : PostmarkSend -> E.Value
+encodeEmail d =
+    E.object <|
+        [ ( "From", E.string <| emailToString d.from )
+        , ( "To", E.string <| emailsToString d.to )
+        , ( "Subject", E.string <| String.Nonempty.toString d.subject )
+        , ( "MessageStream", E.string d.messageStream )
+        ]
+            ++ bodyToJsonValues d.body
+
+
+{-| Send multiple emails in a single API request. See more here <https://postmarkapp.com/developer/user-guide/send-email-with-api/batch-emails>
+-}
+sendEmailsTask : ApiKey -> Nonempty PostmarkSend -> Task SendEmailsError ()
+sendEmailsTask (ApiKey token) d =
+    Http.task
+        { method = "POST"
+        , headers = [ Http.header "X-Postmark-Server-Token" token ]
+        , url = endpoint ++ "/email/batch"
+        , body = List.Nonempty.toList d |> E.list encodeEmail |> Http.jsonBody
+        , resolver = jsonResolver2
+        , timeout = Nothing
+        }
+
+
+sendEmail : (Result SendEmailError () -> msg) -> ApiKey -> PostmarkSend -> Cmd msg
 sendEmail msg token d =
     sendEmailTask token d |> Task.attempt msg
+
+
+sendEmails : (Result SendEmailsError () -> msg) -> ApiKey -> Nonempty PostmarkSend -> Cmd msg
+sendEmails msg token d =
+    sendEmailsTask token d |> Task.attempt msg
 
 
 emailsToString : List.Nonempty.Nonempty { name : String, email : EmailAddress } -> String
@@ -119,63 +148,103 @@ emailToString address =
 type alias PostmarkSendResponse =
     { errorCode : Int
     , message : String
+    , to : List EmailAddress
     }
 
 
 decodePostmarkSendResponse : D.Decoder PostmarkSendResponse
 decodePostmarkSendResponse =
-    D.map2 PostmarkSendResponse
+    D.map3 PostmarkSendResponse
         (D.field "ErrorCode" D.int)
         (D.field "Message" D.string)
+        (optionalField "To" decodeEmails
+            |> D.map
+                (\a ->
+                    case a of
+                        Just nonempty ->
+                            List.Nonempty.toList nonempty
+
+                        Nothing ->
+                            []
+                )
+        )
 
 
-
--- Template send
-
-
-type alias PostmarkTemplateSend =
-    { token : String
-    , templateAlias : String
-    , templateModel : E.Value
-    , from : String
-    , to : String
-    , messageStream : String
-    }
-
-
-sendTemplateEmail : PostmarkTemplateSend -> Task Error ()
-sendTemplateEmail d =
+{-| Copied from <https://package.elm-lang.org/packages/elm-community/json-extra/latest/Json-Decode-Extra>
+-}
+optionalField : String -> D.Decoder a -> D.Decoder (Maybe a)
+optionalField fieldName decoder =
     let
-        httpBody =
-            Http.jsonBody <|
-                E.object <|
-                    [ ( "From", E.string d.from )
-                    , ( "To", E.string d.to )
-                    , ( "MessageStream", E.string d.messageStream )
-                    , ( "TemplateAlias", E.string d.templateAlias )
-                    , ( "TemplateModel", d.templateModel )
-                    ]
+        finishDecoding json =
+            case D.decodeValue (D.field fieldName D.value) json of
+                Ok val ->
+                    -- The field is present, so run the decoder on it.
+                    D.map Just (D.field fieldName decoder)
+
+                Err _ ->
+                    -- The field was missing, which is fine!
+                    D.succeed Nothing
     in
-    Http.task
-        { method = "POST"
-        , headers = [ Http.header "X-Postmark-Server-Token" d.token ]
-        , url = endpoint ++ "/email/withTemplate"
-        , body = httpBody
-        , resolver = jsonResolver decodePostmarkTemplateSendResponse
-        , timeout = Nothing
-        }
+    D.value
+        |> D.andThen finishDecoding
 
 
-type alias PostmarkTemplateSendResponse =
-    { errorCode : Int
-    , message : String
-    }
+decodeEmails : D.Decoder (Nonempty EmailAddress)
+decodeEmails =
+    D.andThen
+        (\text ->
+            let
+                emails : List ( String, Maybe EmailAddress )
+                emails =
+                    String.split "," text
+                        |> List.filterMap
+                            (\subtext ->
+                                let
+                                    trimmed =
+                                        String.trim subtext
+                                in
+                                if trimmed == "" then
+                                    Nothing
 
+                                else
+                                    Just ( trimmed, EmailAddress.fromString trimmed )
+                            )
 
-decodePostmarkTemplateSendResponse =
-    D.map2 PostmarkTemplateSendResponse
-        (D.field "ErrorCode" D.int)
-        (D.field "Message" D.string)
+                validEmails : List EmailAddress
+                validEmails =
+                    List.filterMap Tuple.second emails
+
+                invalidEmails : List String
+                invalidEmails =
+                    List.filterMap
+                        (\( subtext, maybeValid ) ->
+                            if maybeValid == Nothing then
+                                Just subtext
+
+                            else
+                                Nothing
+                        )
+                        emails
+            in
+            case invalidEmails of
+                [] ->
+                    case List.Nonempty.fromList validEmails of
+                        Just nonempty ->
+                            D.succeed nonempty
+
+                        Nothing ->
+                            D.fail "Expected at least one email"
+
+                [ invalidEmail ] ->
+                    invalidEmail ++ " is not a valid email" |> D.fail
+
+                _ ->
+                    invalidEmails
+                        |> String.join ", "
+                        |> (\a -> a ++ " are not valid emails")
+                        |> D.fail
+        )
+        D.string
 
 
 
@@ -197,19 +266,19 @@ bodyToJsonValues body =
             ]
 
 
-jsonResolver : D.Decoder { a | errorCode : Int, message : String } -> Http.Resolver Error ()
-jsonResolver decoder =
+jsonResolver : Http.Resolver SendEmailError ()
+jsonResolver =
     Http.stringResolver
         (\response ->
             case response of
                 Http.GoodStatus_ metadata body ->
-                    case D.decodeString decoder body of
+                    case D.decodeString decodePostmarkSendResponse body of
                         Ok json ->
                             if json.errorCode == 0 then
                                 Ok ()
 
                             else
-                                PostmarkError { errorCode = json.errorCode, message = json.message } |> Err
+                                PostmarkError json |> Err
 
                         Err _ ->
                             UnknownError { statusCode = metadata.statusCode, body = body } |> Err
@@ -225,4 +294,88 @@ jsonResolver decoder =
 
                 Http.BadStatus_ metadata body ->
                     Err (UnknownError { statusCode = metadata.statusCode, body = body })
+        )
+
+
+decodeNonempty : D.Decoder a -> D.Decoder (Nonempty a)
+decodeNonempty decoder =
+    D.list decoder
+        |> D.andThen
+            (\list ->
+                case List.Nonempty.fromList list of
+                    Just nonempty ->
+                        D.succeed nonempty
+
+                    Nothing ->
+                        D.fail "Didn't get back any results"
+            )
+
+
+jsonResolver2 : Http.Resolver SendEmailsError ()
+jsonResolver2 =
+    let
+        decoder : D.Decoder (Nonempty PostmarkSendResponse)
+        decoder =
+            decodeNonempty decodePostmarkSendResponse
+
+        decodeBody metadata body =
+            case D.decodeString decoder body of
+                Ok list ->
+                    let
+                        results : Nonempty (Result PostmarkSendResponse ())
+                        results =
+                            List.Nonempty.map
+                                (\json ->
+                                    if json.errorCode == 0 then
+                                        Ok ()
+
+                                    else
+                                        Err json
+                                )
+                                list
+
+                        badResults : List PostmarkSendResponse
+                        badResults =
+                            List.Nonempty.toList results
+                                |> List.filterMap
+                                    (\a ->
+                                        case a of
+                                            Ok _ ->
+                                                Nothing
+
+                                            Err error ->
+                                                Just error
+                                    )
+                    in
+                    case List.Nonempty.fromList badResults of
+                        Just nonempty ->
+                            PostmarkErrors nonempty |> Err
+
+                        Nothing ->
+                            Ok ()
+
+                Err error ->
+                    let
+                        _ =
+                            Debug.log "error" error
+                    in
+                    UnknownError_ { statusCode = metadata.statusCode, body = body } |> Err
+    in
+    Http.stringResolver
+        (\response ->
+            case response of
+                Http.GoodStatus_ metadata body ->
+                    decodeBody metadata body
+
+                Http.BadUrl_ message ->
+                    Err (BadUrl_ message)
+
+                Http.Timeout_ ->
+                    Err Timeout_
+
+                Http.NetworkError_ ->
+                    Err NetworkError_
+
+                Http.BadStatus_ metadata body ->
+                    decodeBody metadata body
         )

@@ -12,7 +12,7 @@ import EmailAddress exposing (EmailAddress)
 import Html.Parser
 import Http
 import Lamdera
-import List.Nonempty exposing (Nonempty)
+import List.Nonempty exposing (Nonempty(..))
 import Ports
 import Postmark
 import Process
@@ -195,22 +195,35 @@ updateFromBackend msg model =
             )
 
 
-postmarkErrorToString : Postmark.Error -> String
+postmarkErrorToString : Postmark.SendEmailsError -> String
 postmarkErrorToString error =
     case error of
-        Postmark.UnknownError { statusCode, body } ->
+        Postmark.UnknownError_ { statusCode, body } ->
             "Status code " ++ String.fromInt statusCode ++ ", error: " ++ body
 
-        Postmark.PostmarkError { errorCode, message } ->
-            "Postmark error, code " ++ String.fromInt errorCode ++ ", message: " ++ message
+        Postmark.PostmarkErrors nonempty ->
+            List.Nonempty.toList nonempty
+                |> List.map
+                    (\{ errorCode, message, to } ->
+                        case to of
+                            [] ->
+                                "Email failed. Reason: " ++ message
 
-        Postmark.NetworkError ->
+                            _ ->
+                                "Email to "
+                                    ++ (List.map EmailAddress.toString to |> String.join ", ")
+                                    ++ " failed. Reason: "
+                                    ++ message
+                    )
+                |> String.join "\n"
+
+        Postmark.NetworkError_ ->
             "Network error"
 
-        Postmark.Timeout ->
+        Postmark.Timeout_ ->
             "Request timed out"
 
-        Postmark.BadUrl string ->
+        Postmark.BadUrl_ string ->
             "Bad url " ++ string
 
 
@@ -219,7 +232,7 @@ view model =
     { title = "Postmark email client"
     , body =
         [ Element.layout
-            [ Element.padding 16
+            [ Element.paddingEach { left = 16, right = 16, top = 16, bottom = 48 }
             , Element.newTabLink
                 [ Element.Font.color (Element.rgb 0.2 0.3 1)
                 , Element.alignBottom
