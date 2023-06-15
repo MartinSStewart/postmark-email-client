@@ -354,11 +354,7 @@ jsonResolver2 =
                         Nothing ->
                             Ok ()
 
-                Err error ->
-                    let
-                        _ =
-                            Debug.log "error" error
-                    in
+                Err _ ->
                     UnknownError_ { statusCode = metadata.statusCode, body = body } |> Err
     in
     Http.stringResolver
