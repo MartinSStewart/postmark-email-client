@@ -845,8 +845,18 @@ nodeToHtml node_ =
 
         Element tag attrs kids ->
             Html.node tag
-                (List.map (\( k, v ) -> Html.Attributes.attribute k v) attrs)
+                (List.map (\( k, v ) -> Html.Attributes.attribute (escapeHtml k) v) attrs)
                 (List.map nodeToHtml kids)
+
+
+escapeHtml : String -> String
+escapeHtml text2 =
+    String.replace "&" "" text2
+        |> String.replace "<" ""
+        |> String.replace ">" ""
+        |> String.replace "\"" ""
+        |> String.replace "'" ""
+        |> Debug.log text2
 
 
 {-| Turn a multiple html nodes into Elm html that Elm can render.

@@ -39,10 +39,20 @@ toHtmlAttribute : Attribute -> Html.Attribute msg
 toHtmlAttribute attribute =
     case attribute of
         StyleAttribute property value ->
-            Html.Attributes.style property value
+            Html.Attributes.style (escapeHtml property) value
 
         Attribute property value ->
-            Html.Attributes.attribute property value
+            Html.Attributes.attribute (escapeHtml property) value
+
+
+escapeHtml : String -> String
+escapeHtml text2 =
+    String.replace "&" "" text2
+        |> String.replace "<" ""
+        |> String.replace ">" ""
+        |> String.replace "\"" ""
+        |> String.replace "'" ""
+        |> Debug.log text2
 
 
 type alias Acc =
