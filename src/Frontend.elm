@@ -9,9 +9,13 @@ import Element.Input
 import Email.Html
 import Email.Html.Attributes
 import EmailAddress exposing (EmailAddress)
+import Html
+import Html.Attributes
+import Html.Lazy
 import Html.Parser
 import Http
 import Lamdera
+import List.Extra as List
 import List.Nonempty exposing (Nonempty(..))
 import Ports
 import Postmark
@@ -45,8 +49,60 @@ app =
         }
 
 
+type SaveDataVersions
+    = SaveDataV1_ SaveDataV1
+    | SaveDataV2_ SaveData
+
+
 saveDataCodec : Codec e SaveData
 saveDataCodec =
+    Serialize.customType
+        (\a b value ->
+            case value of
+                SaveDataV1_ data ->
+                    a data
+
+                SaveDataV2_ data ->
+                    b data
+        )
+        |> Serialize.variant1 SaveDataV1_ saveDataCodecV1
+        |> Serialize.variant1 SaveDataV2_ saveDataCodecV2
+        |> Serialize.finishCustomType
+        |> Serialize.map
+            (\value ->
+                case value of
+                    SaveDataV1_ data ->
+                        { emailSubject = data.emailSubject
+                        , bodyText = data.bodyText
+                        , bodyHtml = data.bodyHtml
+                        , postmarkApiKey = data.postmarkApiKey
+                        , emailTo = data.emailTo
+                        , senderName = data.senderName
+                        , senderEmail = data.senderEmail
+                        , derivePlainTextFromHtml = False
+                        }
+
+                    SaveDataV2_ data ->
+                        data
+            )
+            SaveDataV2_
+
+
+saveDataCodecV1 : Codec e SaveDataV1
+saveDataCodecV1 =
+    Serialize.record SaveDataV1
+        |> Serialize.field .emailSubject Serialize.string
+        |> Serialize.field .bodyText Serialize.string
+        |> Serialize.field .bodyHtml Serialize.string
+        |> Serialize.field .postmarkApiKey Serialize.string
+        |> Serialize.field .emailTo Serialize.string
+        |> Serialize.field .senderName Serialize.string
+        |> Serialize.field .senderEmail Serialize.string
+        |> Serialize.finishRecord
+
+
+saveDataCodecV2 : Codec e SaveData
+saveDataCodecV2 =
     Serialize.record SaveData
         |> Serialize.field .emailSubject Serialize.string
         |> Serialize.field .bodyText Serialize.string
@@ -55,6 +111,7 @@ saveDataCodec =
         |> Serialize.field .emailTo Serialize.string
         |> Serialize.field .senderName Serialize.string
         |> Serialize.field .senderEmail Serialize.string
+        |> Serialize.field .derivePlainTextFromHtml Serialize.bool
         |> Serialize.finishRecord
 
 
@@ -70,6 +127,7 @@ init url key =
       , senderEmail = ""
       , submitStatus = NotSubmitted HasNotPressedSubmit Nothing
       , debounceCounter = 0
+      , derivePlainTextFromHtml = False
       }
     , Ports.get_local_storage_to_js ()
     )
@@ -163,12 +221,16 @@ update msg model =
                     , emailTo = model.emailTo
                     , senderName = model.senderName
                     , senderEmail = model.senderEmail
+                    , derivePlainTextFromHtml = model.derivePlainTextFromHtml
                     }
                     |> Ports.set_local_storage_to_js
 
               else
                 Cmd.none
             )
+
+        PressedDerivePlainTextFromHtml isEnabled ->
+            { model | derivePlainTextFromHtml = isEnabled } |> debounce
 
 
 debounce : FrontendModel -> ( FrontendModel, Cmd FrontendMsg )
@@ -207,12 +269,12 @@ postmarkErrorToString error =
                     (\{ errorCode, message, to } ->
                         case to of
                             [] ->
-                                "Email failed. Reason: " ++ message
+                                "Email failed. " ++ message
 
                             _ ->
                                 "Email to "
                                     ++ (List.map EmailAddress.toString to |> String.join ", ")
-                                    ++ " failed. Reason: "
+                                    ++ " failed. "
                                     ++ message
                     )
                 |> String.join "\n"
@@ -225,6 +287,47 @@ postmarkErrorToString error =
 
         Postmark.BadUrl_ string ->
             "Bad url " ++ string
+
+
+derivePlainTextFromHtml : String -> String
+derivePlainTextFromHtml htmlText =
+    case Html.Parser.run Html.Parser.noCharRefs htmlText of
+        Ok html ->
+            List.map derivePlainTextFromHtmlHelper html |> String.concat
+
+        Err _ ->
+            ""
+
+
+derivePlainTextFromHtmlHelper : Html.Parser.Node -> String
+derivePlainTextFromHtmlHelper html =
+    case html of
+        Html.Parser.Text text ->
+            text
+
+        Html.Parser.Comment _ ->
+            ""
+
+        Html.Parser.Element tagName attributes nodes ->
+            String.concat (List.map derivePlainTextFromHtmlHelper nodes)
+                ++ (if tagName == "a" then
+                        List.findMap
+                            (\( name, value ) ->
+                                if name == "href" then
+                                    " " ++ value |> Just
+
+                                else
+                                    Nothing
+                            )
+                            attributes
+                            |> Maybe.withDefault ""
+
+                    else if tagName == "br" then
+                        "\n"
+
+                    else
+                        ""
+                   )
 
 
 view : FrontendModel -> Browser.Document FrontendMsg
@@ -245,7 +348,7 @@ view model =
                 |> Element.inFront
             ]
             (Element.column
-                [ Element.width (Element.maximum 800 Element.fill)
+                [ Element.width (Element.maximum 1000 Element.fill)
                 , Element.centerX
                 , Element.spacing 24
                 ]
@@ -307,21 +410,94 @@ view model =
                     TypedEmailSubject
                 , Element.Input.multiline
                     [ Element.Font.size 16, Element.height (Element.minimum 80 Element.shrink) ]
-                    { label = Element.Input.labelAbove [ Element.Font.bold ] (Element.text "Plain text body (the email can contain a plain text body, an html body, or both)")
-                    , placeholder = Nothing
-                    , text = model.bodyText
-                    , onChange = TypedBodyText
-                    , spellcheck = True
-                    }
-                , Element.Input.multiline
-                    [ Element.Font.size 16, Element.height (Element.minimum 80 Element.shrink) ]
                     { label = Element.Input.labelAbove [ Element.Font.bold ] (Element.text "Html body")
                     , placeholder = Nothing
                     , text = model.bodyHtml
                     , onChange = TypedBodyHtml
                     , spellcheck = True
                     }
-                , Element.column
+                , Element.Input.checkbox
+                    [ Element.width Element.fill, Element.Font.size 16, Element.Font.bold ]
+                    { onChange = PressedDerivePlainTextFromHtml
+                    , icon = Element.Input.defaultCheckbox
+                    , checked = model.derivePlainTextFromHtml
+                    , label =
+                        Element.Input.labelRight
+                            [ Element.width Element.fill ]
+                            (Element.paragraph [] [ Element.text "Derive plain text body from html" ])
+                    }
+                , Element.Input.multiline
+                    [ Element.Font.size 16
+                    , Element.height (Element.minimum 80 Element.shrink)
+                    , if model.derivePlainTextFromHtml then
+                        Element.Background.color (Element.rgb 0.9 0.9 0.9)
+
+                      else
+                        Element.Background.color (Element.rgb 1 1 1)
+                    , if model.derivePlainTextFromHtml then
+                        Element.Font.color (Element.rgb 0.5 0.5 0.5)
+
+                      else
+                        Element.Font.color (Element.rgb 0 0 0)
+                    ]
+                    { label =
+                        Element.Input.labelAbove
+                            [ Element.Font.bold
+                            , if model.derivePlainTextFromHtml then
+                                Element.alpha 0.4
+
+                              else
+                                Element.alpha 1
+                            ]
+                            (Element.text "Plain text body (the email can contain a plain text body, an html body, or both)")
+                    , placeholder = Nothing
+                    , text = model.bodyText
+                    , onChange = TypedBodyText
+                    , spellcheck = True
+                    }
+                , Element.row
+                    [ Element.spacing 16, Element.width Element.fill, Element.Font.size 16 ]
+                    [ Element.column
+                        [ Element.width Element.fill, Element.spacing 8, Element.alignTop ]
+                        [ Element.paragraph
+                            [ Element.Font.bold ]
+                            [ Element.text "Html preview*" ]
+                        , Html.Lazy.lazy previewHtml model.bodyHtml
+                            |> Element.html
+                            |> Element.el
+                                [ Element.width Element.fill
+                                , Element.Background.color (Element.rgb 0.95 0.95 0.95)
+                                , Element.padding 8
+                                , Element.height (Element.minimum 100 Element.shrink)
+                                , Html.Attributes.style "white-space" "normal" |> Element.htmlAttribute
+                                ]
+                        ]
+                    , Element.column
+                        [ Element.width Element.fill, Element.spacing 8, Element.alignTop ]
+                        [ Element.el
+                            [ Element.Font.bold ]
+                            (Element.text "Plain text preview")
+                        , Html.div
+                            [ Html.Attributes.style "white-space" "pre-wrap" ]
+                            [ Html.text
+                                (if model.derivePlainTextFromHtml then
+                                    derivePlainTextFromHtml model.bodyHtml
+
+                                 else
+                                    model.bodyText
+                                )
+                            ]
+                            |> Element.html
+                            |> Element.el
+                                [ Element.width Element.fill
+                                , Element.Background.color (Element.rgb 0.95 0.95 0.95)
+                                , Element.padding 8
+                                , Element.height (Element.minimum 100 Element.shrink)
+                                ]
+                        ]
+                    ]
+                , Element.paragraph [ Element.Font.size 16 ] [ Element.text "*Html preview is only an approximation. The actual email shown to the recipient will vary depending on what email client is used." ]
+                , Element.row
                     [ Element.spacing 16, Element.width Element.fill ]
                     [ Ui.simpleButton PressedSubmit
                         (case model.submitStatus of
@@ -349,6 +525,19 @@ view model =
             )
         ]
     }
+
+
+previewHtml : String -> Html.Html msg
+previewHtml htmlText =
+    case validateHtmlBody htmlText |> Debug.log "a" of
+        Ok (Just html) ->
+            Email.Html.toHtml html
+
+        Ok Nothing ->
+            Html.text ""
+
+        Err error ->
+            Html.text error
 
 
 validate : FrontendModel -> Result String EmailRequest

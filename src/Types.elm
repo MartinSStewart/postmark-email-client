@@ -24,6 +24,7 @@ type alias FrontendModel =
     , senderEmail : String
     , submitStatus : SubmitStatus
     , debounceCounter : Int
+    , derivePlainTextFromHtml : Bool
     }
 
 
@@ -55,6 +56,18 @@ type FrontendMsg
     | TypedSenderEmail String
     | GotLocalStorage (Result (Serialize.Error ()) SaveData)
     | CheckDebounce Int
+    | PressedDerivePlainTextFromHtml Bool
+
+
+type alias SaveDataV1 =
+    { emailSubject : String
+    , bodyText : String
+    , bodyHtml : String
+    , postmarkApiKey : String
+    , emailTo : String
+    , senderName : String
+    , senderEmail : String
+    }
 
 
 type alias SaveData =
@@ -65,6 +78,7 @@ type alias SaveData =
     , emailTo : String
     , senderName : String
     , senderEmail : String
+    , derivePlainTextFromHtml : Bool
     }
 
 

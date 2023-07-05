@@ -15,14 +15,13 @@ button attributes onPress label =
 simpleButton : msg -> String -> Element msg
 simpleButton onPress text =
     button
-        [ Element.width Element.fill
-        , Element.Border.rounded 8
-        , Element.Background.color (Element.rgb 0.9 0.9 0.9)
-        , Element.paddingXY 16 8
+        [ Element.Border.rounded 8
+        , Element.Background.color (Element.rgb 0.2 0.4 0.2)
+        , Element.paddingXY 40 8
         , Element.Font.bold
         ]
         onPress
-        (Element.el [ Element.centerX ] (Element.text text))
+        (Element.el [ Element.Font.color (Element.rgb 1 1 1), Element.centerX ] (Element.text text))
 
 
 simpleTextInput : String -> Maybe String -> Result String ok -> String -> (String -> msg) -> Element msg
@@ -46,7 +45,12 @@ errorText text =
         Err error ->
             String.split "\n" error
                 |> List.map (\subtext -> Element.paragraph [] [ Element.text subtext ])
-                |> Element.column [ Element.spacing 6, Element.Font.color (Element.rgb 1 0 0), Element.Font.size 16 ]
+                |> Element.column
+                    [ Element.spacing 6
+                    , Element.Font.color (Element.rgb 1 0 0)
+                    , Element.Font.size 16
+                    , Element.width Element.fill
+                    ]
 
         Ok _ ->
             Element.none
