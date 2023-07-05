@@ -856,7 +856,6 @@ escapeHtml text2 =
         |> String.replace ">" ""
         |> String.replace "\"" ""
         |> String.replace "'" ""
-        |> Debug.log text2
 
 
 {-| Turn a multiple html nodes into Elm html that Elm can render.

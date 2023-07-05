@@ -529,7 +529,7 @@ view model =
 
 previewHtml : String -> Html.Html msg
 previewHtml htmlText =
-    case validateHtmlBody htmlText |> Debug.log "a" of
+    case validateHtmlBody htmlText of
         Ok (Just html) ->
             Email.Html.toHtml html
 

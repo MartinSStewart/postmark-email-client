@@ -52,7 +52,6 @@ escapeHtml text2 =
         |> String.replace ">" ""
         |> String.replace "\"" ""
         |> String.replace "'" ""
-        |> Debug.log text2
 
 
 type alias Acc =
