@@ -552,9 +552,17 @@ validate model =
     of
         T5 (Ok emailTo) (Ok senderEmail) (Ok subject) (Ok apiKey) (Ok bodyHtml) ->
             let
+                bodyText : String
+                bodyText =
+                    if model.derivePlainTextFromHtml then
+                        derivePlainTextFromHtml model.bodyHtml
+
+                    else
+                        String.trim model.bodyText
+
                 bodyResult : Result String Postmark.PostmarkEmailBody
                 bodyResult =
-                    case ( String.trim model.bodyText, bodyHtml ) of
+                    case ( bodyText, bodyHtml ) of
                         ( "", Nothing ) ->
                             Err "Plain text body and html body can't both be empty"
 
