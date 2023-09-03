@@ -845,17 +845,15 @@ nodeToHtml node_ =
 
         Element tag attrs kids ->
             Html.node tag
-                (List.map (\( k, v ) -> Html.Attributes.attribute (escapeHtml k) v) attrs)
+                (List.map (\( k, v ) -> Html.Attributes.attribute (sanitizeHtmlAttributeName k) v) attrs)
                 (List.map nodeToHtml kids)
 
 
-escapeHtml : String -> String
-escapeHtml text2 =
-    String.replace "&" "" text2
-        |> String.replace "<" ""
-        |> String.replace ">" ""
-        |> String.replace "\"" ""
-        |> String.replace "'" ""
+{-| Filter characters based on html attribute name restrictions listed here <https://stackoverflow.com/a/53563849>
+-}
+sanitizeHtmlAttributeName : String -> String
+sanitizeHtmlAttributeName text2 =
+    String.filter (\char -> Char.toCode char > 32 && char /= '"' && char /= '>' && char /= '/' && char /= '=') text2
 
 
 {-| Turn a multiple html nodes into Elm html that Elm can render.

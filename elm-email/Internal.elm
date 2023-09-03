@@ -39,19 +39,17 @@ toHtmlAttribute : Attribute -> Html.Attribute msg
 toHtmlAttribute attribute =
     case attribute of
         StyleAttribute property value ->
-            Html.Attributes.style (escapeHtml property) value
+            Html.Attributes.style (sanitizeHtmlAttributeName property) value
 
         Attribute property value ->
-            Html.Attributes.attribute (escapeHtml property) value
+            Html.Attributes.attribute (sanitizeHtmlAttributeName property) value
 
 
-escapeHtml : String -> String
-escapeHtml text2 =
-    String.replace "&" "" text2
-        |> String.replace "<" ""
-        |> String.replace ">" ""
-        |> String.replace "\"" ""
-        |> String.replace "'" ""
+{-| Filter characters based on html attribute name restrictions listed here <https://stackoverflow.com/a/53563849>
+-}
+sanitizeHtmlAttributeName : String -> String
+sanitizeHtmlAttributeName text2 =
+    String.filter (\char -> Char.toCode char > 32 && char /= '"' && char /= '>' && char /= '/' && char /= '=') text2
 
 
 type alias Acc =
