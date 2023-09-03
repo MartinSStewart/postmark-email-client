@@ -201,6 +201,7 @@ update msg model =
                         , emailTo = ok.emailTo
                         , senderName = ok.senderName
                         , senderEmail = ok.senderEmail
+                        , derivePlainTextFromHtml = ok.derivePlainTextFromHtml
                         , submitStatus = NotSubmitted HasNotPressedSubmit Nothing
                     }
 
@@ -468,7 +469,6 @@ view model =
                                 [ Element.width Element.fill
                                 , Element.Background.color (Element.rgb 0.95 0.95 0.95)
                                 , Element.padding 8
-                                , Element.height (Element.minimum 100 Element.shrink)
                                 , Html.Attributes.style "white-space" "normal" |> Element.htmlAttribute
                                 ]
                         ]
@@ -492,11 +492,12 @@ view model =
                                 [ Element.width Element.fill
                                 , Element.Background.color (Element.rgb 0.95 0.95 0.95)
                                 , Element.padding 8
-                                , Element.height (Element.minimum 100 Element.shrink)
                                 ]
                         ]
                     ]
-                , Element.paragraph [ Element.Font.size 16 ] [ Element.text "*Html preview is only an approximation. The actual email shown to the recipient will vary depending on what email client is used." ]
+                , Element.paragraph
+                    [ Element.Font.size 16 ]
+                    [ Element.text "*Html preview is only an approximation. The actual email shown to the recipient will vary depending on what email client is used." ]
                 , Element.row
                     [ Element.spacing 16, Element.width Element.fill ]
                     [ Ui.simpleButton PressedSubmit
@@ -595,7 +596,7 @@ validate model =
 
 validateHtmlBody : String -> Result String (Maybe Email.Html.Html)
 validateHtmlBody text =
-    case Html.Parser.run Html.Parser.noCharRefs text of
+    case String.replace "\u{000D}" "" text |> String.replace "\n" "<br>" |> Html.Parser.run Html.Parser.noCharRefs of
         Ok ok ->
             (case List.filterMap convertHtml ok of
                 [] ->
