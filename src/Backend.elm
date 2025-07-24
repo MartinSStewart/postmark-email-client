@@ -45,8 +45,9 @@ updateFromFrontend _ clientId msg model =
                         , subject = emailRequest.subject
                         , body = emailRequest.body
                         , messageStream = Postmark.BroadcastEmail
-                        , attachments = emailRequest.attachments
+                        , attachments = Dict.empty
                         }
+                            |> Postmark.addAttachments emailRequest.attachments
                     )
                     emailRequest.emailTo
                 )

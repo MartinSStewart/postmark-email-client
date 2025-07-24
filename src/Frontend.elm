@@ -2,6 +2,7 @@ module Frontend exposing (..)
 
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
+import Dict
 import Element
 import Element.Background
 import Element.Border
@@ -642,12 +643,14 @@ validate model =
                         , attachments =
                             List.map
                                 (\attachment ->
-                                    { filename = attachment.filename
-                                    , mimeType = attachment.mimeType
-                                    , content = attachment.content
-                                    }
+                                    ( attachment.filename
+                                    , { mimeType = attachment.mimeType
+                                      , content = attachment.content
+                                      }
+                                    )
                                 )
                                 model.attachments
+                                |> Dict.fromList
                         }
 
                 Err err ->
