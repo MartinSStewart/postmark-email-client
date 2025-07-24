@@ -4,11 +4,14 @@ import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
 import Element
 import Element.Background
+import Element.Border
 import Element.Font
 import Element.Input
 import Email.Html
 import Email.Html.Attributes
 import EmailAddress exposing (EmailAddress)
+import File
+import File.Select
 import Html
 import Html.Attributes
 import Html.Lazy
@@ -128,6 +131,7 @@ init url key =
       , submitStatus = NotSubmitted HasNotPressedSubmit Nothing
       , debounceCounter = 0
       , derivePlainTextFromHtml = False
+      , attachments = []
       }
     , Ports.get_local_storage_to_js ()
     )
@@ -232,6 +236,30 @@ update msg model =
 
         PressedDerivePlainTextFromHtml isEnabled ->
             { model | derivePlainTextFromHtml = isEnabled } |> debounce
+
+        PressedAddAttachment ->
+            ( model, File.Select.files [ "*/*" ] SelectedAttachments )
+
+        SelectedAttachments file files ->
+            ( model
+            , List.map
+                (\file2 -> File.toBytes file2 |> Task.perform (GotAttachmentContents file2))
+                (file :: files)
+                |> Cmd.batch
+            )
+
+        GotAttachmentContents file bytes ->
+            ( { model
+                | attachments =
+                    { filename = File.name file
+                    , mimeType = File.mime file
+                    , size = File.size file
+                    , content = bytes
+                    }
+                        :: model.attachments
+              }
+            , Cmd.none
+            )
 
 
 debounce : FrontendModel -> ( FrontendModel, Cmd FrontendMsg )
@@ -456,6 +484,32 @@ view model =
                     , onChange = TypedBodyText
                     , spellcheck = True
                     }
+                , Element.column
+                    [ Element.spacing 8 ]
+                    [ Ui.button
+                        [ Element.Border.rounded 8
+                        , Element.Background.color (Element.rgb 0.4 0.4 0.4)
+                        , Element.paddingXY 20 8
+                        , Element.Font.size 16
+                        , Element.Font.bold
+                        ]
+                        PressedAddAttachment
+                        (Element.el [ Element.Font.color (Element.rgb 1 1 1), Element.centerX ] (Element.text "Add attachment"))
+                    , Element.column
+                        [ Element.Font.size 16 ]
+                        (List.map
+                            (\attachment ->
+                                Element.row
+                                    [ Element.spacing 16, Element.width Element.fill ]
+                                    [ Element.text attachment.filename
+                                    , Element.el
+                                        [ Element.Font.color (Element.rgb255 130 130 130), Element.alignRight ]
+                                        (Element.text (" " ++ (toFloat attachment.size / 1024 |> ceiling |> String.fromInt) ++ "kb"))
+                                    ]
+                            )
+                            model.attachments
+                        )
+                    ]
                 , Element.row
                     [ Element.spacing 16, Element.width Element.fill, Element.Font.size 16 ]
                     [ Element.column
@@ -585,6 +639,15 @@ validate model =
                         , senderName = model.senderName
                         , senderEmail = senderEmail
                         , emailTo = emailTo
+                        , attachments =
+                            List.map
+                                (\attachment ->
+                                    { filename = attachment.filename
+                                    , mimeType = attachment.mimeType
+                                    , content = attachment.content
+                                    }
+                                )
+                                model.attachments
                         }
 
                 Err err ->

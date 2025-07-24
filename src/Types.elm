@@ -2,8 +2,11 @@ module Types exposing (..)
 
 import Browser exposing (UrlRequest)
 import Browser.Navigation exposing (Key)
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
 import Email.Html
 import EmailAddress exposing (EmailAddress)
+import File exposing (File)
 import Http
 import Lamdera exposing (ClientId)
 import List.Nonempty exposing (Nonempty)
@@ -25,6 +28,7 @@ type alias FrontendModel =
     , submitStatus : SubmitStatus
     , debounceCounter : Int
     , derivePlainTextFromHtml : Bool
+    , attachments : List { filename : String, mimeType : String, size : Int, content : Bytes }
     }
 
 
@@ -57,6 +61,9 @@ type FrontendMsg
     | GotLocalStorage (Result (Serialize.Error ()) SaveData)
     | CheckDebounce Int
     | PressedDerivePlainTextFromHtml Bool
+    | PressedAddAttachment
+    | SelectedAttachments File (List File)
+    | GotAttachmentContents File Bytes
 
 
 type alias SaveDataV1 =
@@ -89,6 +96,7 @@ type alias EmailRequest =
     , senderName : String
     , senderEmail : EmailAddress
     , emailTo : Nonempty EmailAddress
+    , attachments : Dict String { mimeType : String, content : Bytes }
     }
 
 

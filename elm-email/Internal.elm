@@ -1,9 +1,9 @@
 module Internal exposing (Attribute(..), Html(..), ImageType(..), cid, imageExtension, inlineImageName, mimeType, toHtml, toString)
 
-import Base64
 import Bytes exposing (Bytes)
 import Html
 import Html.Attributes
+import VendoredBase64
 
 
 type Html
@@ -26,7 +26,7 @@ toHtml html =
         InlineImage { content, imageType } attributes children ->
             Html.img
                 (Html.Attributes.src
-                    ("data:" ++ mimeType imageType ++ ";base64," ++ Maybe.withDefault "" (Base64.fromBytes content))
+                    ("data:" ++ mimeType imageType ++ ";base64," ++ Maybe.withDefault "" (VendoredBase64.fromBytes content))
                     :: List.map toHtmlAttribute attributes
                 )
                 (List.map toHtml children)
@@ -39,17 +39,10 @@ toHtmlAttribute : Attribute -> Html.Attribute msg
 toHtmlAttribute attribute =
     case attribute of
         StyleAttribute property value ->
-            Html.Attributes.style (sanitizeHtmlAttributeName property) value
+            Html.Attributes.style property value
 
         Attribute property value ->
-            Html.Attributes.attribute (sanitizeHtmlAttributeName property) value
-
-
-{-| Filter characters based on html attribute name restrictions listed here <https://stackoverflow.com/a/53563849>
--}
-sanitizeHtmlAttributeName : String -> String
-sanitizeHtmlAttributeName text2 =
-    String.filter (\char -> Char.toCode char > 32 && char /= '"' && char /= '>' && char /= '/' && char /= '=') text2
+            Html.Attributes.attribute property value
 
 
 type alias Acc =
@@ -141,6 +134,7 @@ toStringHelper tags acc =
                     children
                     { acc
                         | result = tag "img" (Attribute "src" (cid src) :: attributes) :: acc.result
+                        , inlineImages = inlineImages
                     }
 
             else

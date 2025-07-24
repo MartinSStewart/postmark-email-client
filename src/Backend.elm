@@ -1,5 +1,6 @@
 module Backend exposing (..)
 
+import Dict
 import Html
 import Lamdera exposing (ClientId, SessionId)
 import List.Nonempty exposing (Nonempty(..))
@@ -43,7 +44,8 @@ updateFromFrontend _ clientId msg model =
                         , to = Nonempty { name = "", email = emailTo } []
                         , subject = emailRequest.subject
                         , body = emailRequest.body
-                        , messageStream = "broadcast"
+                        , messageStream = Postmark.BroadcastEmail
+                        , attachments = emailRequest.attachments
                         }
                     )
                     emailRequest.emailTo

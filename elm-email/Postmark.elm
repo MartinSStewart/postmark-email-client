@@ -1,16 +1,13 @@
-module Postmark exposing
-    ( ApiKey
-    , PostmarkEmailBody(..)
-    , PostmarkSend
-    , SendEmailError(..)
-    , SendEmailsError(..)
-    , apiKey
-    , sendEmail
-    , sendEmailTask
-    , sendEmails
-    , sendEmailsTask
-    )
+module Postmark exposing (apiKey, ApiKey, sendEmail, sendEmails, sendEmailTask, sendEmailsTask, addAttachments, PostmarkSend, PostmarkEmailBody(..), MessageStream(..), PostmarkError_, SendEmailError(..), SendEmailsError(..))
 
+{-|
+
+@docs apiKey, ApiKey, sendEmail, sendEmails, sendEmailTask, sendEmailsTask, addAttachments, PostmarkSend, PostmarkEmailBody, MessageStream, PostmarkError_, SendEmailError, SendEmailsError
+
+-}
+
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
 import Email.Html
 import EmailAddress exposing (EmailAddress)
 import Http
@@ -20,6 +17,7 @@ import Json.Encode as E
 import List.Nonempty exposing (Nonempty(..))
 import String.Nonempty exposing (NonemptyString)
 import Task exposing (Task)
+import VendoredBase64
 
 
 endpoint : String
@@ -40,44 +38,103 @@ apiKey apiKey_ =
     ApiKey apiKey_
 
 
+{-|
+
+    What kind of email content are you sending? Just plain text (BodyText), HTML (BodyHtml), or both (BodyBoth).
+    If you do send HTML, it's recommended to also send a plain text version for accessibility and it might reduce the odds of the email getting blocked by a spam filter.
+
+    Also note that email clients are quite limited in what html features are supported!
+    To avoid accidentally using html that's unsupported by some email clients, the `Email.Html` and `Email.Html.Attributes` modules only define tags and attributes with universal support.
+    You can still use `Email.Html.node` and `Email.Html.Attributes.attribute` if you want something that might not be universally supported though.
+
+-}
 type PostmarkEmailBody
     = BodyHtml Email.Html.Html
     | BodyText String
     | BodyBoth Email.Html.Html String
 
 
+{-| Configuration for the email(s) you want to send.
 
--- Plain send
+    { from = { name = "ascii-collab", email = asciiCollabEmail }
+    , to = List.Nonempty.fromElement { name = "", email = recipient }
+    , subject = subject
+    , body = Postmark.BodyText "Hello! Here's your login code 123123"
+    , messageStream = Postmark.TransactionalEmail
+    , attachments =
+        Dict.singleton
+            "filename.txt"
+            { content = "abc", mimeType = "text/plain" }
+    }
 
-
+-}
 type alias PostmarkSend =
     { from : { name : String, email : EmailAddress }
     , to : Nonempty { name : String, email : EmailAddress }
     , subject : NonemptyString
     , body : PostmarkEmailBody
-    , messageStream : String
+    , messageStream : MessageStream
+    , attachments : Dict String { content : String, mimeType : String }
     }
 
 
-{-| Possible error codes we might get back when trying to send an email.
+{-| What type of email are you sending? `TransactionalEmail` is for high priority email intended for a single recipient (a login link for example). `BroadcastEmail` is for emails to be sent to many recipients (a product announcement or a terms of service change). `OtherMessageStream` is in case you have created additional message streams.
+-}
+type MessageStream
+    = TransactionalEmail
+    | BroadcastEmail
+    | OtherMessageStream String
+
+
+{-| Possible errors we might get back when trying to send an email.
 Some are just normal HTTP errors and others are specific to the Postmark API.
 -}
 type SendEmailError
     = UnknownError { statusCode : Int, body : String }
-    | PostmarkError PostmarkSendResponse
+    | PostmarkError PostmarkError_
     | NetworkError
     | Timeout
     | BadUrl String
 
 
+{-| Possible errors we might get back when trying to send multiple emails.
+Some are just normal HTTP errors and others are specific to the Postmark API.
+-}
 type SendEmailsError
     = UnknownError_ { statusCode : Int, body : String }
-    | PostmarkErrors (Nonempty PostmarkSendResponse)
+    | PostmarkErrors (Nonempty PostmarkError_)
     | NetworkError_
     | Timeout_
     | BadUrl_ String
 
 
+{-| Send an email to someone
+
+    import Dict
+    import EmailAddress
+    import List.Nonempty
+    import Postmark
+    import String.Nonempty exposing (NonemptyString)
+
+    {-| An email to be sent to a recipient's email address.
+    -}
+    email : EmailAddress -> Task SendEmailError Msg
+    email recipient =
+        Postmark.sendEmailTask
+            SentEmail
+            postmarkApiKey
+            { from = { name = "ascii-collab", email = asciiCollabEmail }
+            , to = List.Nonempty.fromElement { name = "", email = recipient }
+            , subject = subject
+            , body = Postmark.BodyText "Hello! Here's your login code 123123"
+            , messageStream = Postmark.TransactionalEmail
+            , attachments =
+                Dict.singleton
+                    "filename.txt"
+                    { content = "abc", mimeType = "text/plain" }
+            }
+
+-}
 sendEmailTask : ApiKey -> PostmarkSend -> Task SendEmailError ()
 sendEmailTask (ApiKey token) d =
     Http.task
@@ -92,16 +149,80 @@ sendEmailTask (ApiKey token) d =
 
 encodeEmail : PostmarkSend -> E.Value
 encodeEmail d =
-    E.object <|
-        [ ( "From", E.string <| emailToString d.from )
-        , ( "To", E.string <| emailsToString d.to )
-        , ( "Subject", E.string <| String.Nonempty.toString d.subject )
-        , ( "MessageStream", E.string d.messageStream )
-        ]
-            ++ bodyToJsonValues d.body
+    let
+        ( htmlContent, inlineImages ) =
+            case d.body of
+                BodyHtml html ->
+                    Internal.toString html
+
+                BodyBoth html _ ->
+                    Internal.toString html
+
+                BodyText _ ->
+                    ( "", [] )
+
+        inlineAttachments : Dict String { content : String, mimeType : String }
+        inlineAttachments =
+            inlineImages
+                |> List.map
+                    (\( filename, { content, imageType } ) ->
+                        ( filename
+                        , { content = VendoredBase64.fromBytes content |> Maybe.withDefault ""
+                          , mimeType = Internal.mimeType imageType
+                          }
+                        )
+                    )
+                |> Dict.fromList
+
+        allAttachments : Dict String { content : String, mimeType : String }
+        allAttachments =
+            Dict.union inlineAttachments d.attachments
+
+        attachmentsList : List ( String, { content : String, mimeType : String } )
+        attachmentsList =
+            Dict.toList allAttachments
+    in
+    E.object
+        ([ ( "From", E.string <| emailToString d.from )
+         , ( "To", E.string <| emailsToString d.to )
+         , ( "Subject", E.string <| String.Nonempty.toString d.subject )
+         , ( "MessageStream"
+           , E.string
+                (case d.messageStream of
+                    TransactionalEmail ->
+                        "outbound"
+
+                    BroadcastEmail ->
+                        "broadcast"
+
+                    OtherMessageStream stream ->
+                        stream
+                )
+           )
+         ]
+            ++ (case d.body of
+                    BodyHtml _ ->
+                        [ ( "HtmlBody", E.string htmlContent ) ]
+
+                    BodyText text ->
+                        [ ( "TextBody", E.string text ) ]
+
+                    BodyBoth _ text ->
+                        [ ( "HtmlBody", E.string htmlContent )
+                        , ( "TextBody", E.string text )
+                        ]
+               )
+            ++ (case attachmentsList of
+                    [] ->
+                        []
+
+                    _ ->
+                        [ ( "Attachments", E.list encodeAttachment attachmentsList ) ]
+               )
+        )
 
 
-{-| Send multiple emails in a single API request. See more here <https://postmarkapp.com/developer/user-guide/send-email-with-api/batch-emails>
+{-| Task version of `sendEmails`
 -}
 sendEmailsTask : ApiKey -> Nonempty PostmarkSend -> Task SendEmailsError ()
 sendEmailsTask (ApiKey token) d =
@@ -115,14 +236,81 @@ sendEmailsTask (ApiKey token) d =
         }
 
 
+{-| Send an email to someone
+
+    import Dict
+    import EmailAddress
+    import List.Nonempty
+    import Postmark
+    import String.Nonempty exposing (NonemptyString)
+
+    {-| An email to be sent to a recipient's email address.
+    -}
+    email : EmailAddress -> Cmd Msg
+    email recipient =
+        Postmark.sendEmail
+            SentEmail
+            postmarkApiKey
+            { from = { name = "ascii-collab", email = asciiCollabEmail }
+            , to = List.Nonempty.fromElement { name = "", email = recipient }
+            , subject = subject
+            , body = Postmark.BodyText "Hello! Here's your login code 123123"
+            , messageStream = Postmark.TransactionalEmail
+            , attachments =
+                Dict.singleton
+                    "filename.txt"
+                    { content = "abc", mimeType = "text/plain" }
+            }
+
+-}
 sendEmail : (Result SendEmailError () -> msg) -> ApiKey -> PostmarkSend -> Cmd msg
 sendEmail msg token d =
     sendEmailTask token d |> Task.attempt msg
 
 
+{-| Send multiple emails in a single API request. See more here <https://postmarkapp.com/developer/user-guide/send-email-with-api/batch-emails>
+-}
 sendEmails : (Result SendEmailsError () -> msg) -> ApiKey -> Nonempty PostmarkSend -> Cmd msg
 sendEmails msg token d =
     sendEmailsTask token d |> Task.attempt msg
+
+
+{-| Attach files to the email. These will usually appear at the bottom of the email.
+
+    import Bytes exposing (Bytes)
+    import SendGrid
+
+    attachPngImage : String -> Bytes -> Email -> Email
+    attachPngImage name image email =
+        SendGrid.addAttachments
+            (Dict.fromList
+                [ ( name ++ ".png"
+                  , { content = image
+                    , mimeType = "image/png"
+                    }
+                  )
+                ]
+            )
+            email
+
+If you want to include an image file within the body of your email, use `Email.Html.inlinePngImg`, `Email.Html.inlineJpegImg`, or `Email.Html.inlineGifImg` instead.
+
+-}
+addAttachments : Dict String { content : Bytes, mimeType : String } -> PostmarkSend -> PostmarkSend
+addAttachments attachments email =
+    { email
+        | attachments =
+            Dict.union
+                (Dict.map
+                    (\_ attachment ->
+                        { content = VendoredBase64.fromBytes attachment.content |> Maybe.withDefault ""
+                        , mimeType = attachment.mimeType
+                        }
+                    )
+                    attachments
+                )
+                email.attachments
+    }
 
 
 emailsToString : List.Nonempty.Nonempty { name : String, email : EmailAddress } -> String
@@ -139,22 +327,24 @@ emailToString address =
         EmailAddress.toString address.email
 
     else
-        String.filter (\char -> char /= '<' || char /= '>') address.name
+        String.filter (\char -> char /= '<' && char /= '>' && char /= ',') address.name
             ++ " <"
             ++ EmailAddress.toString address.email
             ++ ">"
 
 
-type alias PostmarkSendResponse =
+{-| Error message you can potentially get from Postmark
+-}
+type alias PostmarkError_ =
     { errorCode : Int
     , message : String
     , to : List EmailAddress
     }
 
 
-decodePostmarkSendResponse : D.Decoder PostmarkSendResponse
+decodePostmarkSendResponse : D.Decoder PostmarkError_
 decodePostmarkSendResponse =
-    D.map3 PostmarkSendResponse
+    D.map3 PostmarkError_
         (D.field "ErrorCode" D.int)
         (D.field "Message" D.string)
         (optionalField "To" decodeEmails
@@ -210,10 +400,6 @@ decodeEmails =
                                     Just ( trimmed, EmailAddress.fromString trimmed )
                             )
 
-                validEmails : List EmailAddress
-                validEmails =
-                    List.filterMap Tuple.second emails
-
                 invalidEmails : List String
                 invalidEmails =
                     List.filterMap
@@ -228,6 +414,11 @@ decodeEmails =
             in
             case invalidEmails of
                 [] ->
+                    let
+                        validEmails : List EmailAddress
+                        validEmails =
+                            List.filterMap Tuple.second emails
+                    in
                     case List.Nonempty.fromList validEmails of
                         Just nonempty ->
                             D.succeed nonempty
@@ -249,21 +440,6 @@ decodeEmails =
 
 
 -- Helpers
-
-
-bodyToJsonValues : PostmarkEmailBody -> List ( String, E.Value )
-bodyToJsonValues body =
-    case body of
-        BodyHtml html ->
-            [ ( "HtmlBody", E.string <| Tuple.first <| Internal.toString html ) ]
-
-        BodyText text ->
-            [ ( "TextBody", E.string text ) ]
-
-        BodyBoth html text ->
-            [ ( "HtmlBody", E.string <| Tuple.first <| Internal.toString html )
-            , ( "TextBody", E.string text )
-            ]
 
 
 jsonResolver : Http.Resolver SendEmailError ()
@@ -318,7 +494,7 @@ decodeNonempty decoder =
 jsonResolver2 : Http.Resolver SendEmailsError ()
 jsonResolver2 =
     let
-        decoder : D.Decoder (Nonempty PostmarkSendResponse)
+        decoder : D.Decoder (Nonempty PostmarkError_)
         decoder =
             D.oneOf
                 [ decodeNonempty decodePostmarkSendResponse
@@ -329,7 +505,7 @@ jsonResolver2 =
             case D.decodeString decoder body of
                 Ok list ->
                     let
-                        results : Nonempty (Result PostmarkSendResponse ())
+                        results : Nonempty (Result PostmarkError_ ())
                         results =
                             List.Nonempty.map
                                 (\json ->
@@ -341,7 +517,7 @@ jsonResolver2 =
                                 )
                                 list
 
-                        badResults : List PostmarkSendResponse
+                        badResults : List PostmarkError_
                         badResults =
                             List.Nonempty.toList results
                                 |> List.filterMap
@@ -382,3 +558,13 @@ jsonResolver2 =
                 Http.BadStatus_ metadata body ->
                     decodeBody metadata body
         )
+
+
+encodeAttachment : ( String, { content : String, mimeType : String } ) -> E.Value
+encodeAttachment ( filename, attachment ) =
+    E.object
+        [ ( "Name", E.string filename )
+        , ( "Content", E.string attachment.content )
+        , ( "ContentType", E.string attachment.mimeType )
+        , ( "ContentID", E.string ("cid:" ++ filename) )
+        ]

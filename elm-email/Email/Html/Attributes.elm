@@ -17,6 +17,8 @@ Open an issue on github if something is missing or incorrectly included.
 
 -}
 
+import Email.Html exposing (Attribute)
+import Html
 import Internal exposing (Attribute(..))
 
 
