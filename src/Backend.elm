@@ -34,6 +34,11 @@ updateFromFrontend : SessionId -> ClientId -> ToBackend -> BackendModel -> ( Bac
 updateFromFrontend _ clientId msg model =
     case msg of
         SendEmailRequest emailRequest ->
+            let
+                attachments : Postmark.Attachments
+                attachments =
+                    Postmark.attachments emailRequest.attachments
+            in
             ( model
             , Postmark.sendEmails
                 (SentEmail clientId)
@@ -45,9 +50,8 @@ updateFromFrontend _ clientId msg model =
                         , subject = emailRequest.subject
                         , body = emailRequest.body
                         , messageStream = Postmark.BroadcastEmail
-                        , attachments = Dict.empty
+                        , attachments = attachments
                         }
-                            |> Postmark.addAttachments emailRequest.attachments
                     )
                     emailRequest.emailTo
                 )
