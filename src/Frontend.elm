@@ -634,20 +634,20 @@ validate model =
                     else
                         String.trim model.bodyText
 
-                bodyResult : Result String Postmark.EmailBody
+                bodyResult : Result String EmailBody
                 bodyResult =
                     case ( bodyText, bodyHtml ) of
                         ( "", Nothing ) ->
                             Err "Plain text body and html body can't both be empty"
 
                         ( _, Nothing ) ->
-                            Postmark.TextBody model.bodyText |> Ok
+                            TextBody model.bodyText |> Ok
 
-                        ( "", Just html ) ->
-                            Postmark.HtmlBody html |> Ok
+                        ( "", Just _ ) ->
+                            HtmlBody model.bodyHtml |> Ok
 
-                        ( _, Just html ) ->
-                            Postmark.HtmlAndTextBody html model.bodyText |> Ok
+                        ( _, Just _ ) ->
+                            HtmlAndTextBody model.bodyHtml model.bodyText |> Ok
             in
             case bodyResult of
                 Ok body ->

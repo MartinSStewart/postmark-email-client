@@ -1,6 +1,8 @@
 module Backend exposing (..)
 
 import Dict
+import Email.Html
+import Frontend
 import Html
 import Lamdera exposing (ClientId, SessionId)
 import List.Nonempty exposing (Nonempty(..))
@@ -38,6 +40,30 @@ updateFromFrontend _ clientId msg model =
                 attachments : Postmark.Attachments
                 attachments =
                     Postmark.attachments emailRequest.attachments
+
+                body =
+                    case emailRequest.body of
+                        HtmlBody html ->
+                            case Frontend.validateHtmlBody html of
+                                Ok (Just html2) ->
+                                    Postmark.HtmlBody html2
+
+                                _ ->
+                                    Postmark.HtmlBody (Email.Html.text "Something went wrong")
+
+                        TextBody string ->
+                            Postmark.TextBody string
+
+                        HtmlAndTextBody html string ->
+                            Postmark.HtmlAndTextBody
+                                (case Frontend.validateHtmlBody html of
+                                    Ok (Just html2) ->
+                                        html2
+
+                                    _ ->
+                                        Email.Html.text "Something went wrong"
+                                )
+                                string
             in
             ( model
             , Postmark.sendEmails
@@ -48,7 +74,7 @@ updateFromFrontend _ clientId msg model =
                         { from = { name = emailRequest.senderName, email = emailRequest.senderEmail }
                         , to = Nonempty { name = "", email = emailTo } []
                         , subject = emailRequest.subject
-                        , body = emailRequest.body
+                        , body = body
                         , messageStream = Postmark.BroadcastEmail
                         , attachments = attachments
                         }
