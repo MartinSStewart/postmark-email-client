@@ -92,7 +92,7 @@ type alias SaveData =
 type alias EmailRequest =
     { apiKey : Postmark.ApiKey
     , subject : NonemptyString
-    , body : Postmark.PostmarkEmailBody
+    , body : Postmark.EmailBody
     , senderName : String
     , senderEmail : EmailAddress
     , emailTo : Nonempty EmailAddress

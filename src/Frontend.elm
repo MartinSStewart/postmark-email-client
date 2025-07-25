@@ -495,7 +495,7 @@ view model =
                         , Element.Font.bold
                         ]
                         PressedAddAttachment
-                        (Element.el [ Element.Font.color (Element.rgb 1 1 1), Element.centerX ] (Element.text "Add attachment"))
+                        (Element.el [ Element.Font.color (Element.rgb 1 1 1), Element.centerX ] (Element.text "Add attachments"))
                     , Element.column
                         [ Element.Font.size 16 ]
                         (List.map
@@ -616,20 +616,20 @@ validate model =
                     else
                         String.trim model.bodyText
 
-                bodyResult : Result String Postmark.PostmarkEmailBody
+                bodyResult : Result String Postmark.EmailBody
                 bodyResult =
                     case ( bodyText, bodyHtml ) of
                         ( "", Nothing ) ->
                             Err "Plain text body and html body can't both be empty"
 
                         ( _, Nothing ) ->
-                            Postmark.BodyText model.bodyText |> Ok
+                            Postmark.TextBody model.bodyText |> Ok
 
                         ( "", Just html ) ->
-                            Postmark.BodyHtml html |> Ok
+                            Postmark.HtmlBody html |> Ok
 
                         ( _, Just html ) ->
-                            Postmark.BodyBoth html model.bodyText |> Ok
+                            Postmark.HtmlAndTextBody html model.bodyText |> Ok
             in
             case bodyResult of
                 Ok body ->
