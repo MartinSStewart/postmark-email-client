@@ -64,6 +64,7 @@ type FrontendMsg
     | PressedAddAttachment
     | SelectedAttachments File (List File)
     | GotAttachmentContents File Bytes
+    | PressedRemoveAttachment String
 
 
 type alias SaveDataV1 =

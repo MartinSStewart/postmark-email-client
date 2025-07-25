@@ -262,6 +262,14 @@ update msg model =
             , Cmd.none
             )
 
+        PressedRemoveAttachment filename ->
+            ( { model
+                | attachments =
+                    List.filter (\attachment -> attachment.filename /= filename) model.attachments
+              }
+            , Cmd.none
+            )
+
 
 debounce : FrontendModel -> ( FrontendModel, Cmd FrontendMsg )
 debounce model =
@@ -497,15 +505,25 @@ view model =
                         PressedAddAttachment
                         (Element.el [ Element.Font.color (Element.rgb 1 1 1), Element.centerX ] (Element.text "Add attachments"))
                     , Element.column
-                        [ Element.Font.size 16 ]
+                        [ Element.Font.size 16, Element.spacing 2 ]
                         (List.map
                             (\attachment ->
                                 Element.row
                                     [ Element.spacing 16, Element.width Element.fill ]
                                     [ Element.text attachment.filename
-                                    , Element.el
-                                        [ Element.Font.color (Element.rgb255 130 130 130), Element.alignRight ]
-                                        (Element.text (" " ++ (toFloat attachment.size / 1024 |> ceiling |> String.fromInt) ++ "kb"))
+                                    , Element.row
+                                        [ Element.spacing 8, Element.alignRight ]
+                                        [ Element.el
+                                            [ Element.Font.color (Element.rgb255 130 130 130) ]
+                                            (Element.text (" " ++ (toFloat attachment.size / 1024 |> ceiling |> String.fromInt) ++ "kb"))
+                                        , Ui.button
+                                            [ Element.Background.color (Element.rgb255 220 38 38)
+                                            , Element.Font.color (Element.rgb 1 1 1)
+                                            , Element.paddingXY 8 4
+                                            ]
+                                            (PressedRemoveAttachment attachment.filename)
+                                            (Element.text "×")
+                                        ]
                                     ]
                             )
                             model.attachments
